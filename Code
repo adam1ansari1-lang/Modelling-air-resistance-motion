@@ -1,0 +1,97 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+
+# --- Part (a): Logistic Function ---
+def logistic(c, A, b, mu, m):
+    return A / (1 + np.exp(-mu * (c - m))) + b
+
+# --- Physics Constants ---
+g = 9.81
+Ax, bx, mux, mx = 0.4, 0.05, -5.0, 0.5
+Az, bz, muz = 0.5, 0.05, 5.0
+
+def jumping_system(t, state, mz):
+    x, z, vx, vz = state
+    kx = logistic(x, Ax, bx, mux, mx)
+    kz = logistic(z, Az, bz, muz, mz)
+    v = np.sqrt(vx**2 + vz**2)
+    ax = -kx * vx * v
+    az = -g - kz * vz * v
+    return [vx, vz, ax, az]
+
+# --- Part (b): Event Function ---
+def hit_ground(t, state, mz):
+    return state[1] # z coordinate
+
+hit_ground.terminal = True
+hit_ground.direction = -1 # Only stop when falling back to 0
+
+# --- Part (c): Container Search with Event Fix ---
+
+# Search Ranges
+mz_vals = np.arange(1, 6, 1)
+vx0_vals = np.arange(10.5, 12.1, 0.1)
+vz0_vals = np.arange(5.0, 6.5, 0.5)
+
+container_list = []
+z0_fix = 1e-6 # BEST PRACTICE: Start slightly above 0
+
+for mz in mz_vals:
+    for vx0 in vx0_vals:
+        for vz0 in vz0_vals:
+            # Task Requirement: 400 points from 0 to 2 seconds
+            t_eval = np.linspace(0, 2, 400)
+            
+            # Solve using the fix for initial z
+            sol = solve_ivp(jumping_system, (0, 2), [0, z0_fix, vx0, vz0], 
+                            args=(mz,), events=hit_ground, t_eval=t_eval)
+            
+         
+            distance = sol.y[0][-1]
+            container_list.append([vx0, vz0, mz, distance])
+
+# Convert to NumPy array for search
+container = np.array(container_list)
+
+
+valid_jumps = container[container[:, 3] >= 8.0]
+
+
+min_vx_idx = np.argmin(valid_jumps[:, 0])
+best_params = valid_jumps[min_vx_idx]
+
+# Final parameter variable
+# Note: Assignment text says "speed in x, speed in z and mu_z" 
+# but explores "mz" in data. mz is used here as the variable parameter.
+minimum_parameter = best_params[:3]
+
+print(f"Minimum x-speed found: {minimum_parameter[0]:.1f} m/s")
+print(f"Full parameter set (vx, vz, mz): {minimum_parameter}")
+
+# --- Part (d): Plots ---
+vx_opt, vz_opt, mz_opt = minimum_parameter
+sol_opt = solve_ivp(jumping_system, (0, 2), [0, z0_fix, vx_opt, vz_opt], 
+                    args=(mz_opt,), events=hit_ground, t_eval=np.linspace(0, 2, 400))
+
+# 1. Drag Coefficients
+plt.figure(figsize=(10, 4))
+coords = np.linspace(0, 10, 500)
+plt.plot(coords, logistic(coords, Ax, bx, mux, mx), label='$k_x(x)$')
+plt.plot(coords, logistic(coords, Az, bz, muz, mz_opt), label='$k_z(z)$')
+plt.xlabel('Coordinate (m)')
+plt.ylabel('Drag Coefficient')
+plt.title('Drag Coefficients for Optimal Solution')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# 2. Trajectory Plot
+plt.figure(figsize=(10, 4))
+plt.plot(sol_opt.y[0], sol_opt.y[1], 'g-', linewidth=2)
+plt.axhline(0, color='black', linestyle='--')
+plt.xlabel('Horizontal Distance x (m)')
+plt.ylabel('Vertical Height z (m)')
+plt.title(f'Optimal Jump (Distance: {sol_opt.y[0][-1]:.2f}m)')
+plt.grid(True, alpha=0.3)
+plt.show()
